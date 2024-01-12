@@ -1,0 +1,7 @@
+**.mypy_cache
+venv
+**__pycache__
+**migrations
+**assets
+**.env
+**db.sqlite3

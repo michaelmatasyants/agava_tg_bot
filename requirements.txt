@@ -1,0 +1,4 @@
+Django==5.0.1
+environs==10.1.0
+aiogram==3.2.0
+emoji==2.9.0
