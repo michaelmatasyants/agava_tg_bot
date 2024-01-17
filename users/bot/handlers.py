@@ -4,16 +4,12 @@ import os
 import emoji
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.filters import CommandStart, StateFilter
+from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup, default_state
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Message,
-)
+from aiogram.types import (CallbackQuery, InlineKeyboardButton,
+                           InlineKeyboardMarkup, Message)
 from aiogram.utils.deep_linking import create_start_link
 from django.conf import settings
 
@@ -35,12 +31,17 @@ class FSMUserForm(StatesGroup):
     send_ref_link = State()
 
 
+@router.message(Command('help'))
+async def process_help(message: Message):
+    await message.answer(text=LEXICON['help'])
+
+
 @router.message(CommandStart())
 @router.message(CommandStart(), StateFilter(default_state))
-async def start_process(message: Message, state: FSMContext):
+async def process_start(message: Message, state: FSMContext):
     if ' ' in message.text:
         if not TgUser.objects.filter(tg_id=message.chat.id):
-            inviter_tg_id = int(message.text.split(" ")[-1])
+            inviter_tg_id = int(message.text.split(' ')[-1])
             await state.update_data(inviter_tg_id=inviter_tg_id)
     text_message = emoji.emojize(
         LEXICON['greeting'].format(message.chat.full_name)
