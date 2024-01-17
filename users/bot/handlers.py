@@ -14,7 +14,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     Message,
 )
-from aiogram.utils.markdown import hlink
+from aiogram.utils.deep_linking import create_start_link
 from django.conf import settings
 
 from users.models import TgUser
@@ -31,16 +31,17 @@ class FSMUserForm(StatesGroup):
     send_group_url = State()
     join_group = State()
     send_squad_url = State()
-    join_squad = State()
     send_casino_url = State()
-    join_casino = State()
     send_ref_link = State()
 
 
 @router.message(CommandStart())
 @router.message(CommandStart(), StateFilter(default_state))
 async def start_process(message: Message, state: FSMContext):
-    await state.clear()
+    if ' ' in message.text:
+        if not TgUser.objects.filter(tg_id=message.chat.id):
+            inviter_tg_id = int(message.text.split(" ")[-1])
+            await state.update_data(inviter_tg_id=inviter_tg_id)
     text_message = emoji.emojize(
         LEXICON['greeting'].format(message.chat.full_name)
     )
@@ -64,12 +65,34 @@ async def start_process(message: Message, state: FSMContext):
                                  parse_mode='HTML')
             await state.set_state(FSMUserForm.send_group_url)
         elif not user.joined_squad:
+            text_message = LEXICON['completed'].format('1')
+            markup = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text=LEXICON['yes_btn'],
+                                         callback_data=LEXICON['yes_btn'])
+                ]
+            ])
+            await message.answer(text=text_message,
+                                 reply_markup=markup)
             await state.set_state(FSMUserForm.send_squad_url)
         elif not user.got_free_dep:
+            text_message = LEXICON['completed'].format('2')
+            markup = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text=LEXICON['yes_btn'],
+                                         callback_data=LEXICON['yes_btn'])
+                ]
+            ])
+            await message.answer(text=text_message,
+                                 reply_markup=markup)
             await state.set_state(FSMUserForm.send_casino_url)
         else:
             text_message = LEXICON['no_tasks'].format(message.chat.full_name)
-            await message.answer(text=text_message)
+            markup = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text=LEXICON['invite_btn'],
+                                     callback_data=LEXICON['invite_btn'])
+            ]])
+            await message.answer(text=text_message, reply_markup=markup)
             await state.set_state(FSMUserForm.send_ref_link)
 
 
@@ -79,12 +102,12 @@ async def process_join_group(callback: CallbackQuery, state: FSMContext):
     text_message = LEXICON['subscribe']
     reply_markup = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text=LEXICON['subscribe_btn'],
+            InlineKeyboardButton(text=LEXICON['join_group_btn'],
                                  url=settings.GROUP_URL)
         ],
         [
-            InlineKeyboardButton(text=LEXICON['next_btn'],
-                                 callback_data=LEXICON['next_btn'])
+            InlineKeyboardButton(text=LEXICON['subscribe_btn'],
+                                 callback_data=LEXICON['subscribe_btn'])
         ]
     ])
     await callback.message.answer(text=text_message, reply_markup=reply_markup)
@@ -93,18 +116,18 @@ async def process_join_group(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(StateFilter(FSMUserForm.join_group))
-@router.callback_query(F.data == LEXICON['next_btn'],
+@router.callback_query(F.data == LEXICON['subscribe_btn'],
                        StateFilter(FSMUserForm.join_group))
 async def check_join_group(callback: CallbackQuery, state: FSMContext):
     text_message = LEXICON['subscibe_2']
     reply_markup = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text=LEXICON['subscribe_btn'],
+            InlineKeyboardButton(text=LEXICON['join_group_btn'],
                                  url=settings.GROUP_URL)
         ],
         [
-            InlineKeyboardButton(text=LEXICON['next_btn'],
-                                 callback_data=LEXICON['next_btn'])
+            InlineKeyboardButton(text=LEXICON['subscribe_btn'],
+                                 callback_data=LEXICON['subscribe_btn'])
         ]
     ])
     try:
@@ -121,35 +144,82 @@ async def check_join_group(callback: CallbackQuery, state: FSMContext):
                                          tg_id=callback.from_user.id,
                                          joined_agava_crypto=True)
             user.save()
+            answers = await state.get_data()
+            if answers:
+                inviter = TgUser.objects.get(tg_id=answers['inviter_tg_id'])
+                inviter.friends = user
+                inviter.save()
+                text_message = LEXICON['invited'].format(user.nickname)
+                await bot.send_message(chat_id=answers['inviter_tg_id'],
+                                       text=text_message)
+            text_message = LEXICON['completed'].format('1')
+            markup = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text=LEXICON['yes_btn'],
+                                         callback_data=LEXICON['yes_btn'])
+                ]
+            ])
+            await callback.message.answer(text=text_message,
+                                          reply_markup=markup)
             await state.set_state(FSMUserForm.send_squad_url)
         else:
             await callback.message.answer(text=text_message,
                                           reply_markup=reply_markup)
-            await state.set_state(FSMUserForm.join_group)
 
 
-@router.message(FSMUserForm.send_squad_url)
-@router.callback_query(F.data == LEXICON['next_btn'],
+@router.callback_query(F.data == LEXICON['yes_btn'],
                        StateFilter(FSMUserForm.send_squad_url))
-async def process_join_squad(handled: Message | CallbackQuery,
-                             state: FSMContext):
-    if isinstance(handled, Message):
-        message = handled
-    else:
-        message = handled.message
-    await message.answer(text='process_join_squad')
-    await state.set_state(FSMUserForm.join_squad)
+async def process_join_squad(callback: CallbackQuery, state: FSMContext):
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text=LEXICON['join_btn'],
+                                 url=settings.NOTCOIN_REFERAL_URL)
+        ],
+        [
+            InlineKeyboardButton(text=LEXICON['next_btn'],
+                                 callback_data=LEXICON['next_btn'])
+        ]
+    ])
+    await callback.message.answer(text=LEXICON['squad'],
+                                  reply_markup=markup)
+    user = TgUser.objects.get(tg_id=callback.from_user.id)
+    user.joined_squad = True
+    user.save()
+    await state.set_state(FSMUserForm.send_casino_url)
 
 
-# @router.callback_query(StateFilter(FSMUserForm.join_squad))
-# async def send_game(message: Message, state: FSMContext):
-#     print('send_game')
-#     markup = InlineKeyboardMarkup(inline_keyboard=[
-#             [InlineKeyboardButton(text=LEXICON['play_game_btn'],
-#                                   url=settings.GAME_LINK)]]
-#     )
-#     await message.answer(text=LEXICON['second_link'],
-#                          reply_markup=markup)
-#     await message.answer(text=LEXICON['second_link'],
-#                          reply_markup=markup)
-#
+@router.callback_query(F.data == LEXICON['next_btn'],
+                       StateFilter(FSMUserForm.send_casino_url))
+@router.callback_query(F.data == LEXICON['yes_btn'],
+                       StateFilter(FSMUserForm.send_casino_url))
+async def send_casino_url(callback: CallbackQuery, state: FSMContext):
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text=LEXICON['enter_btn'],
+                                     url=settings.GAME_LINK)
+            ],
+            [
+                InlineKeyboardButton(text=LEXICON['next_btn'],
+                                     callback_data=LEXICON['next_btn'])
+            ]
+    ])
+    user = TgUser.objects.get(tg_id=callback.from_user.id)
+    user.got_free_dep = True
+    user.save()
+    await callback.message.answer(text=LEXICON['casino'],
+                                  reply_markup=markup)
+    await state.set_state(FSMUserForm.send_ref_link)
+
+
+@router.callback_query(F.data == LEXICON['next_btn'],
+                       StateFilter(FSMUserForm.send_ref_link))
+@router.callback_query(F.data == LEXICON['yes_btn'],
+                       StateFilter(FSMUserForm.send_ref_link))
+async def invite_friends(callback: CallbackQuery, state: FSMContext):
+    await callback.message.answer(text=LEXICON['invite'])
+    await asyncio.sleep(1)
+    referal_url = await create_start_link(bot=bot,
+                                          payload=callback.from_user.id)
+    await callback.message.answer(text=LEXICON['invite_link'])
+    await callback.message.answer(text=referal_url)
+    await state.clear()

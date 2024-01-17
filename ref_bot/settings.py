@@ -12,9 +12,7 @@ GROUP_URL = env.str('GROUP_URL')
 
 GROUP_ID = env.str('GROUP_ID')
 
-NOTCOIN_TG_ID = env.str('NOTCOIN_TG_ID')
-
-NOTCOIN_URL = env.str('NOTCOIN_URL')
+NOTCOIN_REFERAL_URL = env.str('NOTCOIN_REFERAL_URL')
 
 GAME_LINK = env.str('GAME_LINK')
 

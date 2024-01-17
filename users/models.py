@@ -9,8 +9,11 @@ class TgUser(models.Model):
                                               default=False)
     joined_squad = models.BooleanField('Присоединился к скваду',
                                        default=False)
-    got_free_dep = models.BooleanField('Переход в казино',
+    got_free_dep = models.BooleanField('Открыл казино',
                                        default=False)
+    friends = models.ManyToManyField('self',
+                                     verbose_name='кого пригласил',
+                                     blank=True)
 
     def __str__(self):
         return self.nickname
